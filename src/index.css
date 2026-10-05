@@ -1,0 +1,785 @@
+@import 'tailwindcss';
+@import '@fontsource/chakra-petch/latin-400.css';
+@import '@fontsource/chakra-petch/latin-600.css';
+@import '@fontsource/chakra-petch/latin-700.css';
+@import '@fontsource-variable/archivo';
+@import '@fontsource-variable/azeret-mono';
+
+@source "./**/*.{tsx,ts}";
+
+/* ============================================================================
+   MATERIAL: Realistic 3D UI.
+   This is CSS 3D, NOT rendered 3D. There is no WebGL, no canvas and no 3D
+   engine anywhere on this page. It is an approximation of rendered 3D built
+   from flat DOM planes composited by the browser with `perspective` and
+   `transform-style: preserve-3d`. Every "solid" you see is two or more real
+   <div> planes standing at different depths. Treat the depth as convincing,
+   not as computed.
+
+   THE CSS THAT CARRIES THE MATERIAL. Delete any one of these and the
+   dimensionality visibly breaks, so a reviewer can check them by name:
+
+   1. `.stage`   `perspective: 1250px` + `overflow: hidden`. Establishes the
+      real vanishing point every plane below is projected through. Without
+      it the planes are just flat rotated rectangles.
+   2. `.scene`   `transform-style: preserve-3d` and a rotation assembled from
+      `--rx` and `--ry`. Those two numbers are written onto `.stage` by the
+      rAF-throttled pointer handler in `useStageLight`. This is parallax,
+      not a baked-in tilt.
+   3. `.lit`     THE DIRECTIONAL LIGHT. Three stacked backgrounds:
+        (a) specular: a narrow bright band on a 104deg axis, painted onto a
+            box over-sized to 260% and positioned with `--lx` / `--ly`, so
+            the highlight TRAVELS ACROSS each face while the face holds still.
+            Delete (a) and the metal reads as matte cardboard.
+        (b) terminator: the shadow side, a gradient axis driven by `--ang`,
+            which swings to face away from the pointer. Delete (b) and every
+            plane is lit evenly, which is the classic tell of fake 3D.
+        (c) diffuse: a broad radial falloff anchored at the light position.
+      One light direction for the whole scene, every plane obeys it.
+   4. `.deck` / `.slab` / `.blade` / `.cell`  each carries a `translate3d` on
+      its own axis, so the parts sit at different depths, occlude one another
+      and shift against each other as the scene turns.
+   5. `.cast`    the contact shadow, offset AGAINST the light vector. This is
+      what tells the eye the object is above the floor rather than printed on
+      it.
+   6. `.floor`   a plane pushed back with `rotateX(72deg)` plus a negative
+      translateZ, carrying a masked grid that converges on the vanishing
+      point. The convergence is the depth cue the eye trusts first.
+
+   COLOUR. Near-black graphite, cool throughout, one locked electric accent
+   (volt #b4e33d, 75 per cent saturation, the only saturated colour on the
+   page). Shadows are tinted to the graphite hue, never pure black.
+
+   SHAPE RULE. ONE radius, 3px, on every element on the page with no
+   exceptions anywhere: buttons, cards, fields, images, panels. Machined
+   edges, nothing soft. The only circular things on the page are the accent
+   status dots, which are dots rather than boxes.
+   ========================================================================= */
+
+@theme {
+  --color-void: #0a0c0d;
+  --color-graphite: #111517;
+  --color-steel: #1a1f22;
+  --color-edge: #262c30;
+  --color-chalk: #e6ecee;
+  --color-haze: #94a1a6;
+  --color-volt: #b4e33d;
+
+  --font-display: 'Chakra Petch', 'Archivo Variable', system-ui, sans-serif;
+  --font-sans: 'Archivo Variable', system-ui, sans-serif;
+  --font-mono: 'Azeret Mono Variable', ui-monospace, 'SF Mono', monospace;
+
+  --radius-forge: 3px;
+
+  --breakpoint-sm: 40rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+  --breakpoint-xl: 80rem;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-radius: var(--radius-forge);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Default pose of the light rig, declared once at the root so that every
+     .stage inherits rather than overwriting what the pointer handler wrote.
+     --rx / --ry  pointer offset from stage centre, -1 to 1
+     --lx / --ly  light position across the stage, 0 to 1
+     --ang        terminator axis, swung to face away from the light */
+  :root {
+    --rx: 0;
+    --ry: 0;
+    --lx: 0.66;
+    --ly: 0.28;
+    --ang: 36deg;
+    /* Position of the specular band along the 104 degree axis. MUST carry a
+       percentage unit: the gradient stops are calc(var(--sx) - 16%) and so
+       on, and a unitless number there is an invalid mix of number and
+       percentage, which kills the entire background-image at computed-value
+       time and leaves every face flat. */
+    --sx: 46%;
+    /* Uniform scale on the scene, raised down in the stacked mobile layout. */
+    --sc: 1;
+  }
+
+  body {
+    background-color: var(--color-void);
+    color: var(--color-chalk);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* The shop floor light. One fixed, very low key wash so the 3D stages
+     always have a graded field to sit in rather than flat black. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background:
+      radial-gradient(58% 42% at 78% 2%, rgb(38 50 54 / 0.55) 0%, transparent 62%),
+      radial-gradient(46% 38% at 4% 44%, rgb(28 38 41 / 0.5) 0%, transparent 66%),
+      radial-gradient(70% 50% at 50% 104%, rgb(20 27 30 / 0.85) 0%, transparent 72%),
+      var(--color-void);
+  }
+
+  ::selection {
+    background-color: var(--color-volt);
+    color: var(--color-void);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-volt);
+    outline-offset: 3px;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 1.02;
+    text-wrap: balance;
+  }
+}
+
+@layer components {
+  .shell {
+    max-width: 1400px;
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+  }
+
+  @media (min-width: 768px) {
+    .shell {
+      padding-inline: 2.5rem;
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     THE 3D STAGE. See the numbered notes at the top of this file.
+     --lx / --ly  light position across the stage, 0 to 1, written by pointer
+     --rx / --ry  pointer offset from centre, drives the scene rotation
+     --ang        terminator axis, derived from the light so the dark side
+                  always faces away from it
+     -------------------------------------------------------------------------- */
+  .stage {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    perspective: 1250px;
+    perspective-origin: 50% 44%;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+    /* Edges of the stage dissolve into the page so the scene has no frame. */
+    -webkit-mask-image: radial-gradient(122% 126% at 54% 50%, #000 52%, transparent 100%);
+    mask-image: radial-gradient(122% 126% at 54% 50%, #000 52%, transparent 100%);
+  }
+
+  /* Reading scrim. On the wide layout the copy sits left of the scene, so the
+     scrim only needs to lift the left third. Under 768px the copy stacks
+     under the scene instead, so the scrim becomes a full horizontal band
+     that keeps the headline legible without hiding the geometry. */
+  .stage::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      100deg,
+      rgb(10 12 13 / 0.93) 0%,
+      rgb(10 12 13 / 0.66) 30%,
+      rgb(10 12 13 / 0.08) 56%,
+      rgb(10 12 13 / 0.4) 100%
+    );
+  }
+
+  @media (max-width: 767px) {
+    /* Stacked layout. The scene gets the top of the hero and the copy sits
+       below it in a clean field, instead of the geometry printing through
+       the headline. The scrim stays clear where the geometry is and closes
+       down hard through the copy. */
+    .stage::after {
+      background: linear-gradient(
+        to bottom,
+        rgb(10 12 13 / 0) 0%,
+        rgb(10 12 13 / 0.06) 24%,
+        rgb(10 12 13 / 0.62) 44%,
+        rgb(10 12 13 / 0.93) 58%,
+        rgb(10 12 13 / 0.97) 100%
+      );
+    }
+
+    .scene {
+      justify-self: center;
+      align-self: start;
+      margin-right: 0;
+      margin-top: 15%;
+      width: min(760px, 112vw);
+      --sc: 0.72;
+    }
+
+    .scene-wide {
+      width: min(1000px, 150vw);
+      --sc: 0.9;
+    }
+  }
+
+  .scene {
+    position: relative;
+    width: min(690px, 84vw);
+    height: clamp(300px, 42vw, 460px);
+    /* Nudged up inside the stage so the assembly sits on the optical centre
+       rather than the geometric one, which left a dead band at the top. */
+    align-self: center;
+    margin-top: -6%;
+    /* Pushed off the centre line so the hero copy keeps a clear left column.
+       The stage is still full bleed, the copy just sits in the empty half. */
+    justify-self: end;
+    margin-right: -1vw;
+    transform-style: preserve-3d;
+    /* The parallax rotation. Both numbers are written by the pointer handler,
+       so the whole assembly turns as the pointer moves across the stage. */
+    transform: rotateX(calc(var(--ry) * -6deg)) rotateY(calc(var(--rx) * 16deg))
+      scale(var(--sc));
+    transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .scene-wide {
+    width: min(1000px, 96vw);
+    height: clamp(200px, 24vw, 300px);
+  }
+
+  /* (3) THE LIGHT. Four stacked backgrounds on every lit face, painted in
+       order so the last one listed sits on top:
+       (0) BRUSH: fine machined tooling lines. Present on every face so the
+           material reads as milled metal even in the dark half.
+       (a) SPECULAR: one narrow bright band on a 104 degree axis. Its stop
+           position is driven by --sx, a single number the pointer handler
+           writes, so the band TRAVELS ACROSS each face while the face itself
+           holds still. Driving the gradient STOPS rather than
+           background-position is what makes this behave identically on faces
+           of wildly different sizes. Delete this layer and every surface goes
+           matte and dead.
+       (b) TERMINATOR: the shadow side. --ang is the bearing of the light
+           measured from straight up, so the dark end always sits opposite the
+           highlight. Delete it and every plane is lit evenly, which is the
+           classic tell of fake 3D.
+       (c) DIFFUSE: broad falloff anchored at the light position itself. */
+  /* (3) THE LIGHT.
+     ORDER IS LOAD BEARING. In CSS the FIRST background-image layer is painted
+     ON TOP and the last one sits at the bottom, which is the opposite of the
+     reading order people expect. So the list below runs TOP DOWN: specular
+     first, then terminator, brush, diffuse, and the opaque base LAST where it
+     can only fill in underneath. Put the opaque base first and it paints over
+     the highlight and every face goes flat matte grey. Verified by sampling
+     rendered luminance across this face: correct order peaks at 249, inverted
+     order peaks at 59, which is just the base colour showing through.
+
+     (a) SPECULAR: one narrow bright band on a 104 degree axis. Its stop
+         position is driven by --sx, a single number the pointer handler
+         writes, so the band TRAVELS ACROSS each face while the face itself
+         holds still. Driving the gradient STOPS rather than
+         background-position is what makes this behave identically on faces of
+         wildly different sizes. Delete this layer and every surface goes
+         matte and dead.
+     (b) TERMINATOR: the shadow side. --ang is the bearing of the light
+         measured from straight up, so the dark end always sits opposite the
+         highlight. Delete it and every plane is lit evenly, which is the
+         classic tell of fake 3D.
+     (c) DIFFUSE: broad falloff anchored at the light position itself.
+     (d) BRUSH: fine machined tooling lines, present on every face. */
+  .lit {
+    background-image:
+      linear-gradient(
+        104deg,
+        transparent calc(var(--sx) - 26%),
+        rgb(168 188 197 / 0.18) calc(var(--sx) - 10%),
+        rgb(206 220 227 / 0.38) calc(var(--sx) - 4%),
+        rgb(243 250 252 / 0.72) var(--sx),
+        rgb(206 220 227 / 0.38) calc(var(--sx) + 4%),
+        rgb(168 188 197 / 0.18) calc(var(--sx) + 10%),
+        transparent calc(var(--sx) + 26%)
+      ),
+      linear-gradient(var(--ang), rgb(5 8 9 / 0.94) 0%, rgb(5 8 9 / 0.5) 32%, rgb(5 8 9 / 0) 62%),
+      repeating-linear-gradient(
+        96deg,
+        rgb(214 226 231 / 0.05) 0px,
+        rgb(214 226 231 / 0.05) 1px,
+        rgb(6 10 11 / 0.14) 1px,
+        rgb(6 10 11 / 0.14) 3px
+      ),
+      radial-gradient(
+        120% 140% at calc(var(--lx) * 100%) calc(var(--ly) * 100%),
+        rgb(138 155 163 / 0.9) 0%,
+        rgb(34 41 45 / 0) 70%
+      ),
+      linear-gradient(178deg, #374145 0%, #1e2629 100%);
+    background-repeat: no-repeat;
+    border: 1px solid rgb(230 236 238 / 0.13);
+    box-shadow:
+      inset 0 1px 0 rgb(230 236 238 / 0.2),
+      inset 0 -1px 0 rgb(0 0 0 / 0.45),
+      0 26px 50px -28px rgb(2 5 6 / 0.92);
+  }
+
+  /* Heavier two-axis tooling on the large primary faces. Same layer order as
+     .lit: specular on top, opaque base last. */
+  .brushed {
+    background-image:
+      linear-gradient(
+        104deg,
+        transparent calc(var(--sx) - 26%),
+        rgb(168 188 197 / 0.18) calc(var(--sx) - 10%),
+        rgb(206 220 227 / 0.38) calc(var(--sx) - 4%),
+        rgb(243 250 252 / 0.72) var(--sx),
+        rgb(206 220 227 / 0.38) calc(var(--sx) + 4%),
+        rgb(168 188 197 / 0.18) calc(var(--sx) + 10%),
+        transparent calc(var(--sx) + 26%)
+      ),
+      linear-gradient(var(--ang), rgb(5 8 9 / 0.94) 0%, rgb(5 8 9 / 0.5) 32%, rgb(5 8 9 / 0) 62%),
+      repeating-linear-gradient(
+        96deg,
+        rgb(214 226 231 / 0.06) 0px,
+        rgb(214 226 231 / 0.06) 1px,
+        rgb(6 10 11 / 0.16) 1px,
+        rgb(6 10 11 / 0.16) 4px
+      ),
+      repeating-linear-gradient(
+        6deg,
+        rgb(214 226 231 / 0.04) 0px,
+        rgb(214 226 231 / 0.04) 2px,
+        rgb(6 10 11 / 0.06) 2px,
+        rgb(6 10 11 / 0.06) 9px
+      ),
+      radial-gradient(
+        120% 140% at calc(var(--lx) * 100%) calc(var(--ly) * 100%),
+        rgb(146 163 171 / 0.95) 0%,
+        rgb(34 41 45 / 0) 70%
+      ),
+      linear-gradient(178deg, #3c464a 0%, #212a2e 100%);
+    box-shadow:
+      inset 0 1px 0 rgb(230 236 238 / 0.24),
+      inset 0 0 0 1px rgb(230 236 238 / 0.04),
+      inset 0 -1px 0 rgb(0 0 0 / 0.45),
+      0 26px 50px -28px rgb(2 5 6 / 0.92);
+  }
+
+  /* (6) THE FLOOR PLANE. rotateX plus a negative Z so the grid converges on
+     the vanishing point set by .stage's perspective. Convergence is the depth
+     cue the eye trusts before anything else. */
+  .floor {
+    position: absolute;
+    left: -34%;
+    top: 32%;
+    width: 168%;
+    height: 150%;
+    transform: rotateX(74deg) translateZ(-160px);
+    background-image:
+      linear-gradient(rgb(180 227 61 / 0.3) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(230 236 238 / 0.22) 1px, transparent 1px);
+    background-size: 58px 58px;
+    -webkit-mask-image: radial-gradient(closest-side at 50% 52%, #000 14%, transparent 74%);
+    mask-image: radial-gradient(closest-side at 50% 52%, #000 14%, transparent 74%);
+  }
+
+  /* (5) THE CONTACT SHADOW. Offset against the light vector, so the assembly
+     sits above the floor instead of being printed onto it. */
+  .cast {
+    position: absolute;
+    left: 10%;
+    top: 52%;
+    width: 66%;
+    height: 20%;
+    border-radius: 50%;
+    transform: translate3d(calc(var(--rx) * -40px), calc(var(--ry) * -12px), -60px);
+    background: radial-gradient(
+      closest-side,
+      rgb(2 5 6 / 0.95) 0%,
+      rgb(2 5 6 / 0.5) 52%,
+      rgb(2 5 6 / 0) 80%
+    );
+  }
+
+  /* (4) THE SOLIDS.
+     Pack: four real plates on four depths, 14px apart, so the stack shows an
+     edge you can see past and the plates shift against each other as the
+     scene turns. */
+  .pack {
+    position: absolute;
+    left: 2%;
+    top: 29%;
+    width: 44%;
+    height: 34%;
+    transform-style: preserve-3d;
+    transform: translateZ(34px) rotateY(-21deg) rotateX(11deg);
+  }
+
+  .plate {
+    position: absolute;
+    inset: 0;
+  }
+
+  .plate-1 {
+    transform: translateZ(0);
+  }
+
+  .plate-2 {
+    transform: translate3d(0, 14px, -18px);
+  }
+
+  .plate-3 {
+    transform: translate3d(0, 28px, -36px);
+  }
+
+  .plate-4 {
+    transform: translate3d(0, 42px, -54px);
+  }
+
+  /* The lid is a real plane hinged along the top of the pack, so it catches
+     the light at a completely different angle from the front faces. */
+  .lid {
+    position: absolute;
+    left: -1.5%;
+    top: 0;
+    width: 103%;
+    height: 62%;
+    transform-origin: top center;
+    transform: translateZ(4px) rotateX(-72deg);
+  }
+
+  /* Six module caps standing on the lid, each on its own Z. */
+  .cap {
+    position: absolute;
+    top: 16%;
+    height: 46%;
+    width: 13.4%;
+    transform: translateZ(10px);
+  }
+
+  /* Interconnect spine: the one bright element linking pack to motor. */
+  .spine {
+    position: absolute;
+    left: 40%;
+    top: 47%;
+    width: 22%;
+    height: 7px;
+    transform-style: preserve-3d;
+    transform: translate3d(0, -22px, 78px) rotateY(-21deg) rotateX(11deg);
+  }
+
+  .spine-bar {
+    position: absolute;
+    inset: 0;
+    background: var(--color-volt);
+    box-shadow:
+      0 0 22px rgb(180 227 61 / 0.7),
+      0 0 46px rgb(180 227 61 / 0.35);
+  }
+
+  /* Motor rotor. Four depths: back plate, pitched blades, front ring, hub. */
+  .rotor {
+    position: absolute;
+    left: 60%;
+    top: 43%;
+    width: 196px;
+    height: 196px;
+    margin: -98px 0 0 -98px;
+    transform-style: preserve-3d;
+    transform: translateX(calc(var(--rx) * 18px)) translateZ(56px);
+  }
+
+  .rotor-back {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    transform: translateZ(-30px);
+  }
+
+  .rotor-spin {
+    position: absolute;
+    inset: 0;
+    transform-style: preserve-3d;
+    animation: forge-spin 44s linear infinite;
+  }
+
+  /* Blades are pitched 22 degrees out of the wheel plane, which is what turns
+     a flat starburst into a fan of individually lit vanes. */
+  .blade {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 45%;
+    height: 13px;
+    margin: -6.5px 0 0 -22.5%;
+    transform-origin: 100% 50%;
+    border-radius: 2px;
+  }
+
+  .rotor-ring {
+    position: absolute;
+    inset: 14%;
+    border-radius: 50%;
+    border: 1px solid rgb(230 236 238 / 0.14);
+    transform: translateZ(16px);
+  }
+
+  .hub {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 74px;
+    height: 74px;
+    margin: -37px 0 0 -37px;
+    border-radius: 50%;
+    transform: translateZ(20px);
+  }
+
+  .hub-core {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    border-radius: 50%;
+    background: var(--color-volt);
+    box-shadow: 0 0 24px rgb(180 227 61 / 0.65);
+  }
+
+  @keyframes forge-spin {
+    from {
+      transform: rotateZ(0deg);
+    }
+    to {
+      transform: rotateZ(360deg);
+    }
+  }
+
+  /* Second stage: the module rack, five solids receding up and back. */
+  .rack {
+    position: absolute;
+    left: 12%;
+    top: 12%;
+    width: 70%;
+    height: 74%;
+    transform-style: preserve-3d;
+    transform: rotateY(-19deg) rotateX(8deg);
+  }
+
+  /* Each module is its own preserve-3d group: a lit front face, a hinged lit
+     top face and a lit near edge, so it reads as a slab and not a hairline. */
+  .module {
+    position: absolute;
+    left: 0;
+    height: 19%;
+    transform-style: preserve-3d;
+  }
+
+  .module-face {
+    position: absolute;
+    inset: 0;
+  }
+
+  .module-lid {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 40%;
+    transform-origin: top center;
+    transform: translateZ(10px) rotateX(-74deg);
+  }
+
+  .module-edge {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    height: 2px;
+    background: rgb(230 236 238 / 0.3);
+  }
+
+  /* --------------------------------------------------------------------------
+     Machined surface for every flat panel: cards, header, footer, form.
+     Solid graphite with a machined top bevel. No transparency anywhere, so
+     there is nothing to fall back to under prefers-reduced-transparency.
+     -------------------------------------------------------------------------- */
+  .panel {
+    background: linear-gradient(178deg, #171c1f 0%, #101416 100%);
+    border: 1px solid rgb(230 236 238 / 0.08);
+    box-shadow:
+      inset 0 1px 0 rgb(230 236 238 / 0.06),
+      0 28px 52px -34px rgb(2 5 6 / 0.95);
+  }
+
+  .panel-flat {
+    background: var(--color-graphite);
+    border: 1px solid rgb(230 236 238 / 0.07);
+  }
+
+  .micro {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    line-height: 1.2;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--color-haze);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    white-space: nowrap;
+    padding: 0.8rem 1.4rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    transition:
+      transform 340ms cubic-bezier(0.32, 0.72, 0, 1),
+      background-color 340ms cubic-bezier(0.32, 0.72, 0, 1),
+      box-shadow 340ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .btn:active {
+    transform: translateY(1px) scale(0.985);
+  }
+
+  .btn-primary {
+    background: var(--color-volt);
+    color: var(--color-void);
+    border: 1px solid rgb(230 236 238 / 0.42);
+    box-shadow: 0 12px 28px -16px rgb(180 227 61 / 0.62);
+  }
+
+  .btn-primary:hover {
+    background: #c3ee55;
+  }
+
+  .btn-ghost {
+    color: var(--color-chalk);
+    border: 1px solid rgb(230 236 238 / 0.22);
+    background: rgb(230 236 238 / 0.03);
+  }
+
+  .btn-ghost:hover {
+    background: rgb(230 236 238 / 0.08);
+  }
+
+  .btn-icon {
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    margin-right: -0.6rem;
+    border-radius: 999px;
+    background: rgb(10 12 13 / 0.14);
+    transition: transform 340ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .btn:hover .btn-icon {
+    transform: translate(2px, -1px);
+  }
+
+  .btn-ghost .btn-icon {
+    background: rgb(230 236 238 / 0.12);
+  }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(20px);
+    transition:
+      opacity 620ms cubic-bezier(0.16, 1, 0.3, 1),
+      transform 620ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  .link-underline {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+    text-decoration-color: rgb(230 236 238 / 0.34);
+    transition: text-decoration-color 300ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .link-underline:hover {
+    text-decoration-color: var(--color-volt);
+  }
+
+  .field {
+    width: 100%;
+    padding: 0.75rem 0.95rem;
+    color: var(--color-chalk);
+    background: rgb(230 236 238 / 0.04);
+    border: 1px solid rgb(230 236 238 / 0.18);
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    transition:
+      border-color 300ms cubic-bezier(0.32, 0.72, 0, 1),
+      background-color 300ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .field::placeholder {
+    color: var(--color-haze);
+    opacity: 0.7;
+  }
+
+  .field:focus {
+    outline: none;
+    border-color: var(--color-volt);
+    background: rgb(230 236 238 / 0.07);
+  }
+
+  .field-invalid {
+    border-color: #e2654a;
+    background: rgb(226 101 74 / 0.07);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .scene {
+    transition: none;
+  }
+
+  /* The rotor is the only looping animation on the page. Freeze it on a fixed
+     angle rather than removing it, so the fan of blades still reads as a solid
+     object instead of collapsing into a line. */
+  .rotor-spin {
+    animation: none !important;
+    transform: rotateZ(-14deg);
+  }
+
+  .cast {
+    transform: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
